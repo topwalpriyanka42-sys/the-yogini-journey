@@ -79,6 +79,10 @@ service cloud.firestore {
         && request.resource.data.completedAt == request.time;
     }
 
+    match /users/{uid}/certificates/{courseId} {
+      allow get, list: if owner(uid);
+    }
+
     match /admin_audit_logs/{entryId} {
       allow get: if admin();
       allow list: if admin() && request.query.limit <= 100;

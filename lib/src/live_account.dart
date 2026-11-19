@@ -126,6 +126,47 @@ class _LiveProfileState extends ConsumerState<LiveProfile> {
     }
   }
 
+  Future<void> _editName(User user) async {
+    var entered = user.displayName ?? '';
+    final form = GlobalKey<FormState>();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Name on future certificates'),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            initialValue: entered,
+            decoration: const InputDecoration(labelText: 'Full name'),
+            textCapitalization: TextCapitalization.words,
+            maxLength: 120,
+            onChanged: (value) => entered = value,
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Enter your name.'
+                : null,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (form.currentState!.validate()) {
+                Navigator.pop(context, entered.trim());
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name != null && mounted) {
+      await _run(() => user.updateDisplayName(name), 'Profile name saved.');
+    }
+  }
+
   Future<void> _delete(User user) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -197,6 +238,10 @@ class _LiveProfileState extends ConsumerState<LiveProfile> {
                     child: const Text('Check verification'),
                   ),
                 ],
+                TextButton(
+                  onPressed: _busy ? null : () => _editName(user),
+                  child: const Text('Edit certificate name'),
+                ),
                 OutlinedButton(
                   onPressed: _busy ? null : () => _run(auth.signOut),
                   child: const Text('Sign out'),

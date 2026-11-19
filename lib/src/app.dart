@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'account_pages.dart';
+import 'certificates.dart';
 import 'firebase_backend.dart';
 import 'lesson_pages.dart';
 import 'live_account.dart';
@@ -39,11 +40,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
     HomePage(),
     CoursePage(),
     PranayamaPage(),
-    EmptyPage(
-      icon: Icons.workspace_premium_outlined,
-      title: 'Your certificates',
-      description: 'Course certificates will appear here when certificate issuing is available.',
-    ),
+    CertificatesPage(),
     ProfilePage(),
   ];
   final router = GoRouter(

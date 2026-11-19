@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog.dart';
+import 'certificates.dart';
 import 'firebase_backend.dart';
 import 'lesson_pages.dart';
 import 'live_catalog.dart';
@@ -155,6 +156,8 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
                 else ...[
                   Text('$count of ${lessons.length} lessons marked complete'),
                   LinearProgressIndicator(value: count / lessons.length),
+                  if (count == lessons.length)
+                    CertificateRequestButton(courseId: id),
                 ],
                 for (final lesson in lessons)
                   ListTile(
