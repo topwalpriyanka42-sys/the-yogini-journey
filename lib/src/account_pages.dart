@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'firebase_backend.dart';
 import 'pages.dart';
 
 final demoProfileProvider = NotifierProvider<DemoProfile, String?>(
@@ -16,14 +17,14 @@ class DemoProfile extends Notifier<String?> {
   void end() => state = null;
 }
 
-class OnboardingPage extends StatefulWidget {
+class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});
 
   @override
-  State<OnboardingPage> createState() => _OnboardingPageState();
+  ConsumerState<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-class _OnboardingPageState extends State<OnboardingPage> {
+class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   static const _slides = [
     (
       'Find your starting point',
@@ -37,7 +38,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     ),
     (
       'Practice at your own pace',
-      'Open a course to preview a lesson, or try the demo account screens.',
+      'Open a course to explore lessons, or continue as a guest.',
       'studio',
     ),
   ];
@@ -47,6 +48,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   Widget build(BuildContext context) {
     final (title, description, image) = _slides[_index];
+    final demo = ref.watch(authProvider) == null;
     final last = _index == _slides.length - 1;
     return Scaffold(
       appBar: AppBar(
@@ -106,12 +108,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
               onPressed: last
                   ? () => context.push('/register')
                   : () => setState(() => _index++),
-              child: Text(last ? 'Create demo account' : 'Next'),
+              child: Text(
+                last
+                    ? (demo ? 'Create demo account' : 'Create account')
+                    : 'Next',
+              ),
             ),
             if (last)
               TextButton(
                 onPressed: () => context.push('/login'),
-                child: const Text('Demo sign in'),
+                child: Text(demo ? 'Demo sign in' : 'Sign in'),
               ),
           ],
         ),
@@ -121,9 +127,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
 }
 
 class AccountPage extends ConsumerStatefulWidget {
-  const AccountPage({super.key, required this.register});
+  const AccountPage({super.key, required this.register, this.admin = false});
 
   final bool register;
+  final bool admin;
 
   @override
   ConsumerState<AccountPage> createState() => _AccountPageState();
@@ -132,26 +139,101 @@ class AccountPage extends ConsumerStatefulWidget {
 class _AccountPageState extends ConsumerState<AccountPage> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   bool _hidePassword = true;
+  bool _busy = false;
+  String? _message;
+
+  bool _validEmail(String value) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim());
 
   @override
   void dispose() {
     _name.dispose();
+    _email.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  void _submit() {
-    if (!_form.currentState!.validate()) return;
-    ref
-        .read(demoProfileProvider.notifier)
-        .start(widget.register ? _name.text.trim() : 'Demo learner');
-    context.go('/profile');
+  Future<void> _run(Future<void> Function() operation) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await operation();
+    } catch (error) {
+      if (mounted) setState(() => _message = authError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busy || !_form.currentState!.validate()) return;
+    final auth = ref.read(authProvider);
+    if (auth == null) {
+      ref
+          .read(demoProfileProvider.notifier)
+          .start(widget.register ? _name.text.trim() : 'Demo learner');
+      context.go('/profile');
+      return;
+    }
+    final email = _email.text.trim();
+    final password = _password.text;
+    final name = _name.text.trim();
+    await _run(() async {
+      if (widget.register) {
+        final account = await auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        // Keep the account usable if sending the verification email fails.
+        // The profile offers a resend action.
+        if (!mounted) return;
+        try {
+          await account.user?.updateDisplayName(name);
+          await account.user?.sendEmailVerification();
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(authError(error))));
+        }
+      } else {
+        await auth.signInWithEmailAndPassword(email: email, password: password);
+      }
+      if (mounted) context.go(widget.admin ? '/admin' : '/profile');
+    });
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _email.text.trim();
+    if (!_validEmail(email)) {
+      setState(() => _message = 'Enter your email address first.');
+      return;
+    }
+    await _run(() async {
+      await ref.read(authProvider)!.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        setState(
+          () => _message =
+              'If the address is registered, look for a password reset email.',
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final register = widget.register;
-    final title = register ? 'Create demo account' : 'Demo sign in';
+    final demo = ref.watch(authProvider) == null;
+    final title = widget.admin
+        ? 'Administrator sign in'
+        : register
+        ? (demo ? 'Create demo account' : 'Create account')
+        : (demo ? 'Demo sign in' : 'Sign in');
     return Scaffold(
       appBar: AppBar(),
       body: SafeArea(
@@ -160,9 +242,12 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           children: [
             Text(title, style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 8),
-            const Text(
-              'Use a sample email and password. This form opens a temporary demo profile on this device.',
-            ),
+            if (demo)
+              const Text(
+                'Use a sample email and password. This form opens a temporary demo profile on this device.',
+              )
+            else if (widget.admin)
+              const Text('Use your verified administrator account.'),
             const SizedBox(height: 22),
             Form(
               key: _form,
@@ -186,24 +271,26 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     const SizedBox(height: 12),
                   ],
                   TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'Sample email',
-                      hintText: 'learner@example.com',
-                      border: OutlineInputBorder(),
+                    controller: _email,
+                    decoration: InputDecoration(
+                      labelText: demo ? 'Sample email' : 'Email',
+                      hintText: demo ? 'learner@example.com' : null,
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
                     textInputAction: TextInputAction.next,
-                    validator: (value) =>
-                        RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                            .hasMatch(value?.trim() ?? '')
+                    validator: (value) => _validEmail(value ?? '')
                         ? null
-                        : 'Enter a valid sample email.',
+                        : (demo
+                              ? 'Enter a valid sample email.'
+                              : 'Enter a valid email.'),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
+                    controller: _password,
                     decoration: InputDecoration(
-                      labelText: 'Sample password',
+                      labelText: demo ? 'Sample password' : 'Password',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         tooltip: _hidePassword
@@ -222,25 +309,51 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     enableSuggestions: false,
                     autocorrect: false,
                     onFieldSubmitted: (_) => _submit(),
-                    validator: (value) => (value?.trim().length ?? 0) < 8
-                        ? 'Enter at least 8 characters.'
-                        : null,
+                    validator: (value) {
+                      if (demo || register) {
+                        return (value?.length ?? 0) < 8
+                            ? 'Enter at least 8 characters.'
+                            : null;
+                      }
+                      return value == null || value.isEmpty
+                          ? 'Enter your password.'
+                          : null;
+                    },
                   ),
                   const SizedBox(height: 20),
                   FilledButton(
-                    onPressed: _submit,
-                    child: Text(register ? 'Create profile' : 'Sign in'),
+                    onPressed: _busy ? null : _submit,
+                    child: Text(
+                      _busy
+                          ? 'Please wait…'
+                          : register
+                          ? (demo ? 'Create profile' : 'Create account')
+                          : 'Sign in',
+                    ),
                   ),
                 ],
               ),
             ),
-            TextButton(
-              onPressed: () =>
-                  context.pushReplacement(register ? '/login' : '/register'),
-              child: Text(
-                register ? 'Already exploring? Sign in' : 'Create demo account',
+            if (_message case final message?)
+              Semantics(liveRegion: true, child: Text(message)),
+            if (!demo && !register)
+              TextButton(
+                onPressed: _busy ? null : _resetPassword,
+                child: const Text('Forgot password?'),
               ),
-            ),
+            if (!widget.admin)
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => context.pushReplacement(
+                        register ? '/login' : '/register',
+                      ),
+                child: Text(
+                  register
+                      ? 'Already exploring? Sign in'
+                      : (demo ? 'Create demo account' : 'Create account'),
+                ),
+              ),
             TextButton(
               onPressed: () => context.go('/'),
               child: const Text('Continue as guest'),

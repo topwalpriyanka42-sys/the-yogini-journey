@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local Firebase configuration and administrative credentials
+/firebase.*.local.json
+/backend/node_modules/
+/.firebase/

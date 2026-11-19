@@ -1,0 +1,10 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /courses/{courseId}/{lessonId}/video.mp4 {
+      // Only a trusted publishing process can write this metadata.
+      allow get: if resource.contentType == 'video/mp4'
+        && resource.metadata.published == 'true';
+    }
+  }
+}

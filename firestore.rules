@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function verified() {
+      return request.auth != null && request.auth.token.get('email_verified', false) == true;
+    }
+
+    function admin() {
+      return verified() && request.auth.token.get('admin', false) == true;
+    }
+
+    function owner(uid) {
+      return verified() && request.auth.uid == uid;
+    }
+
+    function publishedCourse(courseId) {
+      return get(/databases/$(database)/documents/courses/$(courseId)).data.published == true;
+    }
+
+    function publishedLesson(courseId, lessonId) {
+      return publishedCourse(courseId)
+        && get(/databases/$(database)/documents/courses/$(courseId)/lessons/$(lessonId)).data.published == true;
+    }
+
+    match /courses/{courseId} {
+      allow get, list: if admin() || resource.data.published == true;
+
+      match /lessons/{lessonId} {
+        allow get, list: if admin() || (publishedCourse(courseId) && resource.data.published == true);
+      }
+    }
+
+    match /users/{uid}/courses/{courseId}/lesson_progress/{lessonId} {
+      allow get, list, delete: if owner(uid);
+      allow create, update: if owner(uid)
+        && publishedLesson(courseId, lessonId)
+        && request.resource.data.keys().hasOnly(['completedAt'])
+        && request.resource.data.completedAt == request.time;
+    }
+
+    match /admin_audit_logs/{entryId} {
+      allow get: if admin();
+      allow list: if admin() && request.query.limit <= 100;
+    }
+  }
+}

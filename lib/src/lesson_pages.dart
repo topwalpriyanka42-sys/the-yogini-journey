@@ -6,7 +6,9 @@ import 'catalog.dart';
 import 'pages.dart';
 
 class CourseDetailPage extends StatelessWidget {
-  const CourseDetailPage({super.key, required this.course});
+  const CourseDetailPage({super.key, required this.course, this.lessons});
+
+  final Widget? lessons;
 
   final Course course;
 
@@ -46,15 +48,22 @@ class CourseDetailPage extends StatelessWidget {
           const SizedBox(height: 12),
           Text(course.description),
           const SizedBox(height: 24),
-          Text('Lesson preview', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          const Text('Play a short sample clip to try the lesson player.'),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: () => context.push('/courses/${course.id}/preview'),
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Watch sample lesson'),
-          ),
+          if (lessons case final content?)
+            content
+          else ...[
+            Text(
+              'Lesson preview',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            const Text('Play a short sample clip to try the lesson player.'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => context.push('/courses/${course.id}/preview'),
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('Watch sample lesson'),
+            ),
+          ],
         ],
       ),
     ),
@@ -62,7 +71,15 @@ class CourseDetailPage extends StatelessWidget {
 }
 
 class LessonPreviewPage extends StatefulWidget {
-  const LessonPreviewPage({super.key, required this.course});
+  const LessonPreviewPage({
+    super.key,
+    required this.course,
+    this.videoUrl,
+    this.lessonTitle,
+  });
+
+  final Uri? videoUrl;
+  final String? lessonTitle;
 
   final Course course;
 
@@ -81,7 +98,10 @@ class _LessonPreviewPageState extends State<LessonPreviewPage> {
   }
 
   void _load() {
-    _controller = VideoPlayerController.asset('assets/lesson-preview.mp4');
+    final url = widget.videoUrl;
+    _controller = url == null
+        ? VideoPlayerController.asset('assets/lesson-preview.mp4')
+        : VideoPlayerController.networkUrl(url);
     _initialization = _controller.initialize();
   }
 
@@ -119,7 +139,7 @@ class _LessonPreviewPageState extends State<LessonPreviewPage> {
 
   Widget _error() => Column(
     children: [
-      const Text('The sample video could not be loaded.'),
+      const Text('The video could not be loaded.'),
       TextButton(onPressed: _retry, child: const Text('Retry')),
     ],
   );
@@ -127,7 +147,7 @@ class _LessonPreviewPageState extends State<LessonPreviewPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Sample lesson'),
+      title: Text(widget.lessonTitle ?? 'Sample lesson'),
       leading: BackButton(
         onPressed: () {
           if (context.canPop()) {
@@ -147,7 +167,8 @@ class _LessonPreviewPageState extends State<LessonPreviewPage> {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
-          const Text('Bundled sample video · 8 seconds'),
+          if (widget.videoUrl == null)
+            const Text('Bundled sample video · 8 seconds'),
           const SizedBox(height: 20),
           FutureBuilder<void>(
             future: _initialization,
@@ -155,7 +176,7 @@ class _LessonPreviewPageState extends State<LessonPreviewPage> {
               if (snapshot.connectionState != ConnectionState.done) {
                 return const Center(
                   child: CircularProgressIndicator(
-                    semanticsLabel: 'Loading sample video',
+                    semanticsLabel: 'Loading lesson video',
                   ),
                 );
               }

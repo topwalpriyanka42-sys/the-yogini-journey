@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'catalog.dart';
+import 'firebase_backend.dart';
+import 'live_catalog.dart';
 
 class PageContent extends StatelessWidget {
   const PageContent({super.key, required this.children, this.maxWidth = 1050});
@@ -31,7 +33,7 @@ class HomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => PageContent(
     children: [
-      const _HeroPanel(),
+      _HeroPanel(demo: ref.watch(firebaseAppProvider) == null),
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
@@ -47,7 +49,9 @@ class HomePage extends ConsumerWidget {
         onPressed: () => context.go('/courses'),
       ),
       const SizedBox(height: 10),
-      _CourseGrid(courses: ref.watch(coursesProvider).take(3).toList()),
+      _CatalogContent(
+        builder: (courses) => _CourseGrid(courses: courses.take(3).toList()),
+      ),
       const SizedBox(height: 26),
       _SectionHeader(
         title: 'Pranayama',
@@ -62,7 +66,9 @@ class HomePage extends ConsumerWidget {
 }
 
 class _HeroPanel extends StatelessWidget {
-  const _HeroPanel();
+  const _HeroPanel({required this.demo});
+
+  final bool demo;
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +105,9 @@ class _HeroPanel extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Welcome to the demo',
+                  demo
+                      ? 'Welcome to the demo'
+                      : 'Welcome to The Yogini Journey',
                   style: text.labelLarge?.copyWith(
                     color: const Color(0xfff1e6c9),
                   ),
@@ -159,26 +167,61 @@ class _SectionHeader extends StatelessWidget {
   );
 }
 
-class CoursePage extends ConsumerWidget {
+class CoursePage extends StatelessWidget {
   const CoursePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final courses = ref.watch(coursesProvider);
-    return PageContent(
-      children: [
-        const Text('All courses are free. Browse sample courses by level.'),
-        for (final level in Level.values) ...[
-          const SizedBox(height: 22),
-          Text(level.label, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 10),
-          _CourseGrid(
-            courses: courses.where((course) => course.level == level).toList(),
-          ),
-        ],
-      ],
-    );
-  }
+  Widget build(BuildContext context) => PageContent(
+    children: [
+      const Text('All courses are free. Browse courses by level.'),
+      _CatalogContent(
+        builder: (courses) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final level in Level.values)
+              if (courses.any((course) => course.level == level)) ...[
+                const SizedBox(height: 22),
+                Text(
+                  level.label,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 10),
+                _CourseGrid(
+                  courses: courses
+                      .where((course) => course.level == level)
+                      .toList(),
+                ),
+              ],
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+class _CatalogContent extends ConsumerWidget {
+  const _CatalogContent({required this.builder});
+
+  final Widget Function(List<Course>) builder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(courseCatalogProvider)
+      .when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, _) => Column(
+          children: [
+            const Text('Could not load courses.'),
+            TextButton(
+              onPressed: () => ref.invalidate(courseCatalogProvider),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+        data: (courses) => courses.isEmpty
+            ? const Text('Courses will appear here when they are published.')
+            : builder(courses),
+      );
 }
 
 class _CourseGrid extends StatelessWidget {

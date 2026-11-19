@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'account_pages.dart';
-import 'catalog.dart';
+import 'firebase_backend.dart';
 import 'lesson_pages.dart';
+import 'live_account.dart';
+import 'live_catalog.dart';
+import 'live_lessons.dart';
 import 'pages.dart';
 import 'theme.dart';
 
@@ -54,11 +57,24 @@ final _routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         builder: (_, _) => const AccountPage(register: true),
       ),
+      GoRoute(path: '/admin', builder: (_, _) => const AdminPage()),
+      GoRoute(
+        path: '/admin/sign-in',
+        redirect: (_, _) => ref.read(authProvider) == null ? '/admin' : null,
+        builder: (_, _) => const AccountPage(register: false, admin: true),
+      ),
       GoRoute(
         path: '/courses/:courseId',
         builder: (_, state) =>
             _CourseRoute(courseId: state.pathParameters['courseId']!),
         routes: [
+          GoRoute(
+            path: 'lessons/:lessonId',
+            builder: (_, state) => _CourseRoute(
+              courseId: state.pathParameters['courseId']!,
+              lessonId: state.pathParameters['lessonId']!,
+            ),
+          ),
           GoRoute(
             path: 'preview',
             builder: (_, state) => _CourseRoute(
@@ -137,16 +153,38 @@ class _Shell extends StatelessWidget {
 }
 
 class _CourseRoute extends ConsumerWidget {
-  const _CourseRoute({required this.courseId, this.playPreview = false});
+  const _CourseRoute({
+    required this.courseId,
+    this.playPreview = false,
+    this.lessonId,
+  });
 
   final String courseId;
   final bool playPreview;
+  final String? lessonId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final course = ref
-        .watch(coursesProvider)
-        .where((course) => course.id == courseId)
+    final catalog = ref.watch(courseCatalogProvider);
+    if (catalog.isLoading && !catalog.hasValue) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (catalog.hasError && !catalog.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Course unavailable')),
+        body: PageContent(
+          children: [
+            const Text('Could not load the course.'),
+            TextButton(
+              onPressed: () => ref.invalidate(courseCatalogProvider),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    final course = catalog.value
+        ?.where((course) => course.id == courseId)
         .firstOrNull;
     if (course == null) {
       return Scaffold(
@@ -162,9 +200,16 @@ class _CourseRoute extends ConsumerWidget {
         ),
       );
     }
-    return playPreview
+    final live = ref.watch(firestoreProvider) != null;
+    if ((live ? lessonId : null) case final String id) {
+      return LiveLessonPage(course: course, lessonId: id);
+    }
+    return !live && playPreview
         ? LessonPreviewPage(course: course)
-        : CourseDetailPage(course: course);
+        : CourseDetailPage(
+            course: course,
+            lessons: live ? LiveCourseLessons(course: course) : null,
+          );
   }
 }
 
@@ -174,12 +219,16 @@ class ProfilePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => PageContent(
     children: [
-      Text(
-        ref.watch(demoProfileProvider) ?? 'Guest profile',
-        style: Theme.of(context).textTheme.headlineMedium,
-      ),
-      const SizedBox(height: 8),
-      const Text('You’re exploring The Yogini Journey in demo mode.'),
+      if (ref.watch(authProvider) != null)
+        const LiveProfile()
+      else ...[
+        Text(
+          ref.watch(demoProfileProvider) ?? 'Guest profile',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 8),
+        const Text('You’re exploring The Yogini Journey in demo mode.'),
+      ],
       const SizedBox(height: 24),
       DropdownButtonFormField<ThemeMode>(
         initialValue: ref.watch(themeModeProvider),
@@ -200,20 +249,22 @@ class ProfilePage extends ConsumerWidget {
         },
       ),
       const SizedBox(height: 20),
-      if (ref.watch(demoProfileProvider) == null) ...[
-        FilledButton(
-          onPressed: () => context.push('/login'),
-          child: const Text('Demo sign in'),
-        ),
-        OutlinedButton(
-          onPressed: () => context.push('/register'),
-          child: const Text('Create demo account'),
-        ),
-      ] else
-        OutlinedButton(
-          onPressed: () => ref.read(demoProfileProvider.notifier).end(),
-          child: const Text('End demo session'),
-        ),
+      if (ref.watch(authProvider) == null) ...[
+        if (ref.watch(demoProfileProvider) == null) ...[
+          FilledButton(
+            onPressed: () => context.push('/login'),
+            child: const Text('Demo sign in'),
+          ),
+          OutlinedButton(
+            onPressed: () => context.push('/register'),
+            child: const Text('Create demo account'),
+          ),
+        ] else
+          OutlinedButton(
+            onPressed: () => ref.read(demoProfileProvider.notifier).end(),
+            child: const Text('End demo session'),
+          ),
+      ],
     ],
   );
 }
