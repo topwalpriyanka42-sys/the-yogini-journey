@@ -2,12 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog.dart';
 import 'firebase_backend.dart';
 import 'lesson_pages.dart';
 import 'live_catalog.dart';
 import 'pages.dart';
+import 'youtube_video.dart';
 
 class LiveCourseLessons extends ConsumerStatefulWidget {
   const LiveCourseLessons({super.key, required this.course});
@@ -198,7 +200,10 @@ final _enrollmentProvider = StreamProvider.autoDispose
 
 final _mediaUrlProvider = FutureProvider.autoDispose
     .family<Uri, ({String courseId, String lessonId})>((ref, key) async {
-      final storage = ref.watch(storageProvider)!;
+      final storage = ref.watch(storageProvider);
+      if (storage == null) {
+        throw StateError('Firebase Storage is unavailable.');
+      }
       final url = await storage
           .ref('courses/${key.courseId}/${key.lessonId}/video.mp4')
           .getDownloadURL();
@@ -239,6 +244,26 @@ class LiveLessonPage extends ConsumerWidget {
           if (lesson == null) {
             return _status(const Text('This lesson is unavailable.'));
           }
+          final youtubeId = lesson.youtubeVideoId;
+          if (isYoutubeVideoId(youtubeId)) {
+            return _status(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    lesson.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Watch on YouTube'),
+                    onPressed: () => _openYoutube(context, youtubeId!),
+                  ),
+                ],
+              ),
+            );
+          }
           final media = _mediaUrlProvider((
             courseId: course.id,
             lessonId: lessonId,
@@ -263,4 +288,22 @@ class LiveLessonPage extends ConsumerWidget {
               );
         },
       );
+}
+
+Future<void> _openYoutube(BuildContext context, String videoId) async {
+  try {
+    if (await launchUrl(
+      youtubeWatchUri(videoId),
+      mode: LaunchMode.externalApplication,
+    )) {
+      return;
+    }
+  } catch (_) {
+    // The launcher can throw if the device has no compatible activity.
+  }
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not open YouTube on this device.')),
+    );
+  }
 }

@@ -9,6 +9,7 @@ import 'package:material_ui/material_ui.dart';
 import 'catalog.dart';
 import 'firebase_backend.dart';
 import 'pages.dart';
+import 'youtube_video.dart';
 
 typedef _Document = DocumentSnapshot<Map<String, dynamic>>;
 typedef _Collection = CollectionReference<Map<String, dynamic>>;
@@ -26,7 +27,7 @@ class AdminCatalog extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final courses = ref.watch(firestoreProvider)!.collection('courses');
-    final storage = ref.watch(storageProvider)!;
+    final storage = ref.watch(storageProvider);
     return _AdminList(
       collection: courses,
       newLabel: 'Add course',
@@ -41,7 +42,7 @@ Future<void> _openEditor(
   BuildContext context,
   DocumentReference<Map<String, dynamic>> document,
   Map<String, dynamic>? data,
-  FirebaseStorage storage,
+  FirebaseStorage? storage,
   bool lesson,
 ) => Navigator.of(context).push<void>(
   MaterialPageRoute(
@@ -135,7 +136,7 @@ class _Editor extends StatefulWidget {
 
   final DocumentReference<Map<String, dynamic>> document;
   final Map<String, dynamic>? data;
-  final FirebaseStorage storage;
+  final FirebaseStorage? storage;
   final bool lesson;
 
   @override
@@ -168,19 +169,26 @@ class _EditorState extends State<_Editor> {
   late String _thumbnail = _thumbnails.containsKey(widget.data?['thumbnail'])
       ? widget.data!['thumbnail'] as String
       : 'studio';
+  late String? _savedYoutubeId = widget.data?['youtubeVideoId'] as String?;
+  late final _youtube = TextEditingController(
+    text: isYoutubeVideoId(_savedYoutubeId)
+        ? youtubeWatchUri(_savedYoutubeId!).toString()
+        : '',
+  );
   late bool _saved = widget.data != null;
   late bool _published = widget.data?['published'] == true;
   bool _busy = false;
   double? _progress;
   String? _status;
 
-  Reference get _video => widget.storage.ref(
+  Reference get _video => widget.storage!.ref(
     'courses/${widget.document.parent.parent!.id}/${widget.document.id}/video.mp4',
   );
 
   @override
   void dispose() {
     _title.dispose();
+    _youtube.dispose();
     _description.dispose();
     _number.dispose();
     super.dispose();
@@ -223,6 +231,7 @@ class _EditorState extends State<_Editor> {
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
     final number = int.parse(_number.text.trim());
+    final youtubeId = youtubeIdFromLink(_youtube.text);
     final data = <String, dynamic>{
       'title': _title.text.trim(),
       if (widget.lesson)
@@ -233,12 +242,18 @@ class _EditorState extends State<_Editor> {
         'level': _level.name,
         'thumbnail': _thumbnail,
       },
+      if (widget.lesson && !_published)
+        if (youtubeId != null)
+          'youtubeVideoId': youtubeId
+        else if (_savedYoutubeId != null)
+          'youtubeVideoId': FieldValue.delete(),
       if (!_saved) 'published': false,
     };
     await widget.document.set(data, SetOptions(merge: true));
     if (mounted) {
       setState(() {
         _saved = true;
+        if (widget.lesson && !_published) _savedYoutubeId = youtubeId;
         _status = 'Changes saved.';
       });
     }
@@ -314,7 +329,13 @@ class _EditorState extends State<_Editor> {
       await _save();
     }
 
-    if (widget.lesson && publish) {
+    final usesStorage = widget.lesson && !isYoutubeVideoId(_savedYoutubeId);
+    if (usesStorage && publish && widget.storage == null) {
+      setState(() => _status = 'Add a YouTube link to publish this lesson.');
+      return;
+    }
+
+    if (usesStorage && publish) {
       await _video.updateMetadata(
         SettableMetadata(customMetadata: {'published': 'true'}),
       );
@@ -341,7 +362,7 @@ class _EditorState extends State<_Editor> {
       await widget.document.update({'published': publish});
     }
     if (mounted) setState(() => _published = publish);
-    if (widget.lesson && !publish) {
+    if (usesStorage && !publish && widget.storage != null) {
       try {
         await _video.updateMetadata(
           SettableMetadata(customMetadata: {'published': 'false'}),
@@ -400,6 +421,28 @@ class _EditorState extends State<_Editor> {
                       decoration: const InputDecoration(labelText: 'Title'),
                       validator: (value) => _requiredText(value, 120),
                     ),
+                    if (widget.lesson)
+                      TextFormField(
+                        controller: _youtube,
+                        enabled: !_busy && !_published,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        decoration: const InputDecoration(
+                          labelText: 'YouTube link',
+                          hintText: 'https://youtu.be/…',
+                          helperText:
+                              'Paste a Public or Unlisted YouTube video link.',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return null;
+                          }
+                          return youtubeIdFromLink(value) == null
+                              ? 'Paste a valid HTTPS YouTube video link.'
+                              : null;
+                        },
+                      ),
                     if (!widget.lesson) ...[
                       TextFormField(
                         controller: _description,
@@ -463,7 +506,11 @@ class _EditorState extends State<_Editor> {
                       onPressed: _busy ? null : () => _run(_save),
                       child: const Text('Save'),
                     ),
-                    if (_saved && widget.lesson && !_published) ...[
+                    if (_saved &&
+                        widget.lesson &&
+                        !_published &&
+                        widget.storage != null &&
+                        _youtube.text.trim().isEmpty) ...[
                       OutlinedButton.icon(
                         onPressed: _busy ? null : () => _run(_upload),
                         icon: const Icon(Icons.upload_file),

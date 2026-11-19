@@ -18,7 +18,9 @@ final firestoreProvider = Provider<FirebaseFirestore?>((ref) {
 });
 final storageProvider = Provider<FirebaseStorage?>((ref) {
   final app = ref.watch(firebaseAppProvider);
-  return app == null ? null : FirebaseStorage.instanceFor(app: app);
+  return app == null || app.options.storageBucket?.isNotEmpty != true
+      ? null
+      : FirebaseStorage.instanceFor(app: app);
 });
 
 Future<FirebaseApp?> initializeBackend() async {
@@ -28,7 +30,7 @@ Future<FirebaseApp?> initializeBackend() async {
   const sender = String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
   const project = String.fromEnvironment('FIREBASE_PROJECT_ID');
   const bucket = String.fromEnvironment('FIREBASE_STORAGE_BUCKET');
-  if ([apiKey, appId, sender, project, bucket].any((value) => value.isEmpty)) {
+  if ([apiKey, appId, sender, project].any((value) => value.isEmpty)) {
     throw StateError('Firebase platform configuration is incomplete.');
   }
   return Firebase.initializeApp(
@@ -37,7 +39,7 @@ Future<FirebaseApp?> initializeBackend() async {
       appId: appId,
       messagingSenderId: sender,
       projectId: project,
-      storageBucket: bucket,
+      storageBucket: bucket == '' ? null : bucket,
     ),
   );
 }

@@ -5,11 +5,12 @@ import 'catalog.dart';
 import 'firebase_backend.dart';
 
 class Lesson {
-  const Lesson(this.id, this.title, this.order);
+  const Lesson(this.id, this.title, this.order, {this.youtubeVideoId});
 
   final String id;
   final String title;
   final int order;
+  final String? youtubeVideoId;
 }
 
 final courseCatalogProvider = StreamProvider<List<Course>>((ref) {
@@ -58,6 +59,7 @@ final lessonsProvider = StreamProvider.autoDispose.family<List<Lesson>, String>(
                       doc.id,
                       doc.data()['title'] as String,
                       doc.data()['order'] as int,
+                      youtubeVideoId: doc.data()['youtubeVideoId'] as String?,
                     ),
                   )
                   .toList()

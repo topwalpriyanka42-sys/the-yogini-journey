@@ -37,7 +37,9 @@ service cloud.firestore {
 
     function validLesson(data) {
       return validText(data.title, 120) && data.order is int
-        && data.order >= 1 && data.order <= 10000 && data.published is bool;
+        && data.order >= 1 && data.order <= 10000 && data.published is bool
+        && (!('youtubeVideoId' in data) || (data.youtubeVideoId is string
+          && data.youtubeVideoId.matches('^[A-Za-z0-9_-]{11}$')));
     }
 
     match /courses/{courseId} {
@@ -53,11 +55,11 @@ service cloud.firestore {
         allow get, list: if admin() || (publishedCourse(courseId) && resource.data.published == true);
         allow create: if admin()
           && exists(/databases/$(database)/documents/courses/$(courseId))
-          && request.resource.data.keys().hasOnly(['title', 'order', 'published'])
+          && request.resource.data.keys().hasOnly(['title', 'order', 'published', 'youtubeVideoId'])
           && validLesson(request.resource.data) && !request.resource.data.published;
         allow update: if admin()
           && exists(/databases/$(database)/documents/courses/$(courseId))
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'order', 'published'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'order', 'published', 'youtubeVideoId'])
           && validLesson(request.resource.data);
       }
     }
