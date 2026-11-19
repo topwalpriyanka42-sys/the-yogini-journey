@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:file_selector/file_selector.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -245,24 +245,23 @@ class _EditorState extends State<_Editor> {
   }
 
   Future<void> _upload() async {
-    const group = XTypeGroup(
-      label: 'MP4 video',
-      extensions: ['mp4'],
-      mimeTypes: ['video/mp4'],
-      uniformTypeIdentifiers: ['public.mpeg-4'],
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp4'],
+      withData: false,
     );
-    final file = await openFile(acceptedTypeGroups: [group]);
-    if (file == null || !mounted) return;
-    final length = await file.length();
-    if (!mounted) return;
-    if (!file.name.toLowerCase().endsWith('.mp4') ||
-        length < 1 ||
-        length > _maxVideoBytes) {
-      setState(() => _status = 'Choose an MP4 file up to 100 MB.');
+    if (result == null || !mounted) return;
+    final file = result.files.single;
+    final path = file.path;
+    if (path == null ||
+        !file.name.toLowerCase().endsWith('.mp4') ||
+        file.size < 1 ||
+        file.size > _maxVideoBytes) {
+      setState(() => _status = 'Choose a local MP4 file up to 100 MB.');
       return;
     }
     final upload = _video.putFile(
-      File(file.path),
+      File(path),
       SettableMetadata(
         contentType: 'video/mp4',
         customMetadata: {'published': 'false'},
