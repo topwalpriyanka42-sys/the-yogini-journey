@@ -44,4 +44,77 @@ void main() {
       Brightness.dark,
     );
   });
+  testWidgets(
+    'welcome tour opens registration and creates a temporary profile',
+    (tester) async {
+      await tester.pumpWidget(const ProviderScope(child: YoginiApp()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Take the welcome tour'));
+      await tester.pumpAndSettle();
+      expect(find.text('Find your starting point'), findsOneWidget);
+
+      for (var step = 0; step < 2; step++) {
+        await tester.ensureVisible(find.text('Next'));
+        await tester.tap(find.text('Next'));
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(find.text('Create demo account'));
+      await tester.tap(find.text('Create demo account'));
+      await tester.pumpAndSettle();
+
+      final submit = find.widgetWithText(FilledButton, 'Create profile');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a name.'), findsOneWidget);
+      expect(find.text('Enter a valid sample email.'), findsOneWidget);
+      expect(find.text('Enter at least 8 characters.'), findsOneWidget);
+
+      final fields = find.byType(TextFormField);
+      await tester.enterText(fields.at(0), 'Demo Student');
+      await tester.enterText(fields.at(1), 'student@example.com');
+      await tester.enterText(fields.at(2), 'sample123');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(find.text('Demo Student'), findsOneWidget);
+
+      await tester.tap(find.text('End demo session'));
+      await tester.pumpAndSettle();
+      expect(find.text('Guest profile'), findsOneWidget);
+    },
+  );
+
+  testWidgets('guest can open sign in and use sample credentials', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const ProviderScope(child: YoginiApp()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(NavigationDestination, 'Profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Demo sign in'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    expect(fields, findsNWidgets(2));
+    await tester.enterText(fields.at(0), 'learner@example.com');
+    await tester.enterText(fields.at(1), 'sample123');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(find.text('Demo learner'), findsOneWidget);
+  });
+
+  testWidgets('course cards open the matching detail page', (tester) async {
+    await tester.pumpWidget(const ProviderScope(child: YoginiApp()));
+    await tester.pumpAndSettle();
+    final course = find.text('Morning Yoga');
+    await tester.ensureVisible(course);
+    await tester.tap(course);
+    await tester.pumpAndSettle();
+    expect(find.text('Course details'), findsOneWidget);
+    expect(find.text('Morning Yoga'), findsOneWidget);
+    expect(find.text('Watch sample lesson'), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('The Yogini Journey'), findsOneWidget);
+  });
 }

@@ -5,16 +5,17 @@ import 'package:go_router/go_router.dart';
 import 'catalog.dart';
 
 class PageContent extends StatelessWidget {
-  const PageContent({super.key, required this.children});
+  const PageContent({super.key, required this.children, this.maxWidth = 1050});
 
   final List<Widget> children;
+  final double maxWidth;
 
   @override
   Widget build(BuildContext context) => SingleChildScrollView(
     padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
     child: Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1050),
+        constraints: BoxConstraints(maxWidth: maxWidth),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: children,
@@ -31,6 +32,14 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => PageContent(
     children: [
       const _HeroPanel(),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => context.push('/welcome'),
+          icon: const Icon(Icons.explore_outlined),
+          label: const Text('Take the welcome tour'),
+        ),
+      ),
       const SizedBox(height: 26),
       _SectionHeader(
         title: 'Explore free courses',
@@ -216,41 +225,44 @@ class CoursePreviewCard extends StatelessWidget {
       color: theme.colorScheme.surfaceContainerHigh,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AspectRatio(
-            aspectRatio: 2,
-            child: Image.asset(
-              'assets/${course.image}.jpg',
-              fit: BoxFit.cover,
-              excludeFromSemantics: true,
+      child: InkWell(
+        onTap: () => context.push('/courses/${course.id}'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 2,
+              child: Image.asset(
+                'assets/${course.image}.jpg',
+                fit: BoxFit.cover,
+                excludeFromSemantics: true,
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  course.level.label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    course.level.label,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(course.title, style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  '${course.minutes} min · Free',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: 6),
-                Text(course.description, style: theme.textTheme.bodySmall),
-              ],
+                  const SizedBox(height: 4),
+                  Text(course.title, style: theme.textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${course.minutes} min · Free',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(course.description, style: theme.textTheme.bodySmall),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

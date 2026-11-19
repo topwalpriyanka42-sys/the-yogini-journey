@@ -2,6 +2,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'account_pages.dart';
+import 'catalog.dart';
+import 'lesson_pages.dart';
 import 'pages.dart';
 import 'theme.dart';
 
@@ -42,6 +45,29 @@ final _routerProvider = Provider<GoRouter>((ref) {
   ];
   final router = GoRouter(
     routes: [
+      GoRoute(path: '/welcome', builder: (_, _) => const OnboardingPage()),
+      GoRoute(
+        path: '/login',
+        builder: (_, _) => const AccountPage(register: false),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (_, _) => const AccountPage(register: true),
+      ),
+      GoRoute(
+        path: '/courses/:courseId',
+        builder: (_, state) =>
+            _CourseRoute(courseId: state.pathParameters['courseId']!),
+        routes: [
+          GoRoute(
+            path: 'preview',
+            builder: (_, state) => _CourseRoute(
+              courseId: state.pathParameters['courseId']!,
+              playPreview: true,
+            ),
+          ),
+        ],
+      ),
       ShellRoute(
         builder: (context, state, child) => _Shell(
           selectedIndex: _tabs.indexWhere((tab) => tab.path == state.uri.path),
@@ -110,13 +136,48 @@ class _Shell extends StatelessWidget {
   );
 }
 
+class _CourseRoute extends ConsumerWidget {
+  const _CourseRoute({required this.courseId, this.playPreview = false});
+
+  final String courseId;
+  final bool playPreview;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final course = ref
+        .watch(coursesProvider)
+        .where((course) => course.id == courseId)
+        .firstOrNull;
+    if (course == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Course unavailable')),
+        body: PageContent(
+          children: [
+            const Text('This course could not be found.'),
+            TextButton(
+              onPressed: () => context.go('/courses'),
+              child: const Text('Browse courses'),
+            ),
+          ],
+        ),
+      );
+    }
+    return playPreview
+        ? LessonPreviewPage(course: course)
+        : CourseDetailPage(course: course);
+  }
+}
+
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PageContent(
     children: [
-      Text('Guest profile', style: Theme.of(context).textTheme.headlineMedium),
+      Text(
+        ref.watch(demoProfileProvider) ?? 'Guest profile',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
       const SizedBox(height: 8),
       const Text('You’re exploring The Yogini Journey in demo mode.'),
       const SizedBox(height: 24),
@@ -138,6 +199,21 @@ class ProfilePage extends ConsumerWidget {
           if (mode != null) ref.read(themeModeProvider.notifier).select(mode);
         },
       ),
+      const SizedBox(height: 20),
+      if (ref.watch(demoProfileProvider) == null) ...[
+        FilledButton(
+          onPressed: () => context.push('/login'),
+          child: const Text('Demo sign in'),
+        ),
+        OutlinedButton(
+          onPressed: () => context.push('/register'),
+          child: const Text('Create demo account'),
+        ),
+      ] else
+        OutlinedButton(
+          onPressed: () => ref.read(demoProfileProvider.notifier).end(),
+          child: const Text('End demo session'),
+        ),
     ],
   );
 }

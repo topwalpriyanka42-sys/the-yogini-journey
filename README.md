@@ -1,6 +1,6 @@
 # The Yogini Journey
 
-Phase 1 is a Flutter demo for Android and iOS. It opens in guest mode using bundled course and breathing practice previews. After dependencies are installed, the app can run offline without Firebase configuration.
+Phase 2 is a Flutter demo for Android and iOS. It opens in guest mode using bundled course and breathing practice previews. After dependencies are installed, the app can run offline without Firebase configuration.
 
 ## Run the demo
 
@@ -19,15 +19,24 @@ For Android, install Android Studio and the Android SDK, accept the licenses wit
 
 For iOS, use macOS with Xcode and an iOS Simulator. Start it with `open -a Simulator`, then select its ID from `flutter devices`.
 
+## Try the Phase 2 screens
+
+- On Home, tap **Take the welcome tour** for the three onboarding screens, or browse the app immediately as a guest.
+- Open **Profile** for **Demo sign in** or **Create demo account**. Use a sample email such as `learner@example.com` and a sample password of at least eight characters. The forms create an in-memory demo profile and discard the email and password. Registration does not create a Firebase account.
+- Tap any course card, then tap **Watch sample lesson** to play the bundled eight-second placeholder MP4 on a supported Android or iOS device. The same clearly labeled sample is used across the catalog.
+- Browse six pranayama previews from the **Pranayama** tab.
+
 ## Project layout
 
 - `lib/main.dart` starts the Flutter app and Riverpod.
 - `lib/src/app.dart` configures the five GoRouter destinations and guest appearance setting.
 - `lib/src/theme.dart` defines the light and dark Material themes.
 - `lib/src/pages.dart` contains the responsive screens and shared preview widgets.
+- `lib/src/account_pages.dart` contains onboarding, account forms, and the temporary demo profile.
+- `lib/src/lesson_pages.dart` contains course details and the sample player.
 - `lib/src/catalog.dart` contains typed mock course and breathing practice data.
-- `assets/` contains offline demo photos.
-- `test/app_test.dart` checks narrow-screen navigation and the dark appearance setting.
+- `assets/` contains offline demo photos and a sample MP4.
+- `test/app_test.dart` checks narrow-screen navigation, the dark appearance setting, onboarding, demo account forms, and course details.
 - `android/` and `ios/` contain the generated platform projects. The development application ID is `com.example.the_yogini_journey`.
 
 Demo photo sources: [Studio](https://images.unsplash.com/photo-1544367567-0f2fcb009e0b), [Morning](https://images.unsplash.com/photo-1575052814086-f385e2e2ad1b), [Balance](https://images.unsplash.com/photo-1506126613408-eca07ce68773). Photos are from [Unsplash](https://unsplash.com/license).
@@ -42,4 +51,4 @@ Demo photo sources: [Studio](https://images.unsplash.com/photo-1544367567-0f2fcb
 
 ## Next phase
 
-Build the onboarding, sign-in and registration screens, course details, and sample lesson playback. The current catalog contains six course previews and six breathing practice previews. The Certificates tab is an empty state and Profile offers an in-session appearance setting.
+Phase 3 connects Firebase authentication, Firestore, Storage, administrator authorization, and user progress. The current catalog includes 16 free course previews across three levels. Certificates remains an empty state.
