@@ -174,28 +174,3 @@ test('only the verified learner can enroll in a published course', async () => {
   await assertSucceeds(getDoc(doc(learner, path)));
   await assertFails(getDoc(doc(stranger, path)));
 });
-
-test('certificates are readable by their verified owner and writable only by the server', async () => {
-  const path = 'users/learner/certificates/morning';
-  const certificate = {
-    certificateId: '00000000-0000-4000-8000-000000000000',
-    courseTitle: 'Morning',
-    shareEnabled: true,
-    issuedAt: new Date(0),
-  };
-  await environment.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), path), certificate);
-  });
-  const learner = environment.authenticatedContext('learner', verified).firestore();
-  const stranger = environment.authenticatedContext('stranger', verified).firestore();
-  const admin = environment.authenticatedContext('operator', { ...verified, admin: true }).firestore();
-  const guest = environment.unauthenticatedContext().firestore();
-  await assertSucceeds(getDoc(doc(learner, path)));
-  await assertSucceeds(getDocs(collection(learner, 'users/learner/certificates')));
-  await assertFails(getDoc(doc(stranger, path)));
-  await assertFails(getDoc(doc(guest, path)));
-  await assertFails(getDoc(doc(admin, path)));
-  await assertFails(updateDoc(doc(learner, path), { shareEnabled: false }));
-  await assertFails(deleteDoc(doc(learner, path)));
-  await assertFails(setDoc(doc(learner, path.replace('morning', 'fake')), certificate));
-});

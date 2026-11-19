@@ -1,0 +1,12 @@
+name = "yogini-certificates"
+main = "src/worker.mjs"
+compatibility_date = "2025-11-01"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "the-yogini-journey"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "yogini-certificates"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

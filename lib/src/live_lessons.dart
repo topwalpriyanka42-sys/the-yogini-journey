@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog.dart';
+import 'certificate_client.dart';
 import 'certificates.dart';
 import 'firebase_backend.dart';
 import 'lesson_pages.dart';
@@ -52,7 +53,12 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
     }
   }
 
-  Future<void> _save(String uid, String lessonId, bool completed) async {
+  Future<void> _save(
+    String uid,
+    String lessonId,
+    bool completed, {
+    required bool finalLesson,
+  }) async {
     if (!_saving.add(lessonId)) return;
     setState(() {});
     try {
@@ -66,6 +72,17 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
         await document.set({'completedAt': FieldValue.serverTimestamp()});
       } else {
         await document.delete();
+      }
+      if (mounted && finalLesson && completed) {
+        try {
+          final client = ref.read(certificateClientProvider);
+          if (client != null) {
+            await client.issue(widget.course.id);
+            if (mounted) ref.invalidate(certificateHistoryProvider);
+          }
+        } catch (_) {
+          // Progress is saved. The learner can retry from Get certificate.
+        }
       }
     } catch (_) {
       if (mounted) {
@@ -82,6 +99,7 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
 
   @override
   Widget build(BuildContext context) {
+    if (certificateServer != null) ref.watch(certificateClientProvider);
     final id = widget.course.id;
     final user = ref.watch(authUserProvider).asData?.value;
     final progress = user?.emailVerified == true
@@ -156,7 +174,7 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
                 else ...[
                   Text('$count of ${lessons.length} lessons marked complete'),
                   LinearProgressIndicator(value: count / lessons.length),
-                  if (count == lessons.length)
+                  if (count == lessons.length && certificateServer != null)
                     CertificateRequestButton(courseId: id),
                 ],
                 for (final lesson in lessons)
@@ -176,6 +194,9 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
                                     user!.uid,
                                     lesson.id,
                                     value == true,
+                                    finalLesson:
+                                        count == lessons.length - 1 &&
+                                        !completed.contains(lesson.id),
                                   ),
                           ),
                   ),

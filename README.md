@@ -114,33 +114,45 @@ Publish the latest Firestore rules using `firebase deploy --only firestore:rules
 2. Open **Profile → Administrator access**, select the course, then add a lesson. Paste the share link into **YouTube link**, save, and tap **Publish lesson**. For an existing published lesson, move it to draft before changing its video link.
 3. Publish the course if it is still a draft. Learners can tap **Watch on YouTube** to open the video in the YouTube app or browser.
 
-## Phase 5 certificates
+## Phase 5 certificates on the free tiers
 
-A verified learner earns one certificate per course automatically after completing every published lesson. Courses with no published lessons are ineligible. The server checks the published lesson IDs and the learner's saved completion records in a Firestore transaction. Completion records are self-reported in the app, including for YouTube lessons. Existing learners can tap **Get certificate** after completing a course to run the same check.
+Certificates use Firebase Authentication and Firestore on Spark, plus a Cloudflare Workers Free service with D1. The app renders PDFs on the phone. This path does not require Firebase Functions, Firebase Storage, or the Blaze plan. Usage is subject to the respective free-tier limits.
 
-The **Certificates** tab contains private certificate history and the PDF download button. The PDF includes the learner's profile name, course title, date, certificate ID, branded issuer seal, and a QR code. The seal is a graphic and does not represent a cryptographic signature. From **Profile → Edit certificate name**, the user can update the name used for future certificates.
+A verified learner earns one certificate per course after completing every published lesson. The app requests it after saving the final completion. **Get certificate** retries the same server check for older progress or an interrupted request. The Worker validates the Firebase sign-in with Google, reads all required lesson and completion records at a consistent Firestore read time, and stores one record per learner and course. Completion is self-reported, including for YouTube lessons.
 
-Public verification is off by default. In **Certificates**, tap **Enable QR verification** to make the name, course, completion date, and PDF accessible to anyone with the link or QR code. The app then offers **Share PDF** and **Verify online**. The learner can turn off online verification again. Already downloaded copies remain with their recipients. The account deletion extension's recursive removal of `users/{UID}` also removes the certificates from verification.
+**Certificates** shows private history and **Download PDF**. The PDF includes the learner's name, course, date, ID, issuer seal, and QR code. The seal is a graphic. **Enable QR verification** makes the name, course, date and ID visible to anyone with the link, and enables **Share PDF**. The learner can disable verification at any time. Existing downloaded PDFs remain with their recipients. **Profile → Edit certificate name** updates the name used on future certificates.
 
-### Deploy
+### Deploy on Cloudflare
 
-Certificates run on Firebase Cloud Functions in `us-central1` with Node.js 22. Deployment requires the Firebase **Blaze** plan, which can incur charges. The PDFs are generated on request and need no Firebase Storage bucket. YouTube lessons can continue without Cloud Storage.
-
-Using an authorized Firebase project operator account and a current Firebase CLI:
+Use Node.js 22+ and the Cloudflare account that should own the certificate database. The following commands run from the repository root in the authorized operator's terminal:
 
 ```sh
-npm --prefix functions ci
-firebase deploy --only firestore:rules,firestore:indexes,functions --project <project-id>
+cd certificate-worker
+npx wrangler login
+npx wrangler d1 create yogini-certificates
 ```
 
-Wait for the collection-group `certificates.certificateId` index to be enabled before testing public verification. The Functions runtime identity needs Firestore read/write access and Firebase Authentication read access. There are no service account keys in the client. The public endpoint is served by the deployed Cloud Function at the URL embedded in each QR code.
-
-### Certificate integration tests
+Copy the resulting database ID into the D1 binding in `wrangler.toml`. The project in `FIREBASE_PROJECT_ID` should match the app's Firebase project. Use the same Firebase Android client API key in the Worker setting. Paste it at the Wrangler prompt, where it is stored as a secret.
 
 ```sh
-npm --prefix backend ci
-npm --prefix functions ci
-YOGINI_FUNCTIONS_URL=http://127.0.0.1:15001/demo-yogini/us-central1 \
-  firebase emulators:exec --project demo-yogini --only auth,firestore,storage,functions \
-  'npm --prefix backend test && npm --prefix functions test'
+npx wrangler d1 migrations apply yogini-certificates --remote
+npx wrangler secret put FIREBASE_API_KEY
+npx wrangler deploy
+```
+
+Open the deployed `https://...workers.dev/` URL and confirm it returns `"ready":true`. No Firebase service-account key is needed. The Worker uses the verified learner's own token and the existing Firestore rules. Build the Android or iOS app with the exact trusted Worker URL as `CERTIFICATE_WORKER_URL` in the local build JSON. Firebase sign-in tokens are sent only to this build-configured HTTPS origin, with redirects disabled.
+
+```sh
+flutter build apk --release --target-platform android-arm64 \
+  --dart-define-from-file=firebase.youtube.local.json
+```
+
+For any future account-deletion rollout, also remove that UID's rows from the D1 `certificates` table using the trusted Cloudflare project account. The Firebase deletion extension only removes Firebase data.
+
+### Test
+
+```sh
+flutter analyze
+flutter test
+node --test certificate-worker/test/worker.test.mjs
 ```

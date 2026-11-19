@@ -52,4 +52,6 @@ app.*.map.json
 /backend/node_modules/
 /.firebase/
 
-/functions/node_modules/
+/certificate-worker/.wrangler/
+/certificate-worker/.dev.vars
+/certificate-worker/node_modules/

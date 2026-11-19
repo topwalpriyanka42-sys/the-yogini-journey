@@ -1,7 +1,3 @@
-import 'dart:convert';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,37 +5,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'certificate_client.dart';
+import 'certificate_pdf.dart';
 import 'firebase_backend.dart';
 import 'pages.dart';
 
-final _certificateFunctions = Provider<FirebaseFunctions>((ref) {
-  return FirebaseFunctions.instanceFor(
-    app: ref.watch(firebaseAppProvider)!,
-    region: 'us-central1',
-  );
-});
-
-final _certificatesProvider = StreamProvider.autoDispose
-    .family<List<QueryDocumentSnapshot<Map<String, dynamic>>>, String>(
-      (ref, uid) => ref
-          .watch(firestoreProvider)!
-          .collection('users')
-          .doc(uid)
-          .collection('certificates')
-          .orderBy('issuedAt', descending: true)
-          .snapshots()
-          .map((snapshot) => snapshot.docs),
-    );
-
 String _certificateError(Object error) {
-  if (error is FirebaseFunctionsException &&
-      const {
-        'failed-precondition',
-        'unauthenticated',
-        'invalid-argument',
-      }.contains(error.code)) {
-    return error.message ?? 'Could not check certificate eligibility.';
-  }
+  if (error is CertificateRequestException) return error.message;
   return 'Could not complete the certificate request. Check your connection and try again.';
 }
 
@@ -60,10 +32,14 @@ class _CertificateRequestButtonState
   Future<void> _request() async {
     setState(() => _busy = true);
     try {
-      await ref
-          .read(_certificateFunctions)
-          .httpsCallable('issueCertificate')
-          .call({'courseId': widget.courseId});
+      final client = ref.read(certificateClientProvider);
+      if (client == null) {
+        throw const CertificateRequestException(
+          'Certificate service is not configured.',
+        );
+      }
+      await client.issue(widget.courseId);
+      if (mounted) ref.invalidate(certificateHistoryProvider);
       if (mounted) context.go('/certificates');
     } catch (error) {
       if (mounted) {
@@ -118,7 +94,7 @@ class CertificatesPage extends ConsumerWidget {
                 ],
               );
             }
-            final history = _certificatesProvider(user.uid);
+            final history = certificateHistoryProvider;
             return PageContent(
               children: [
                 Text(
@@ -149,7 +125,7 @@ class CertificatesPage extends ConsumerWidget {
                               children: [
                                 for (final record in records)
                                   _CertificateCard(
-                                    key: ValueKey(record.reference.path),
+                                    key: ValueKey(record.id),
                                     record: record,
                                   ),
                               ],
@@ -165,7 +141,7 @@ class CertificatesPage extends ConsumerWidget {
 class _CertificateCard extends ConsumerStatefulWidget {
   const _CertificateCard({super.key, required this.record});
 
-  final QueryDocumentSnapshot<Map<String, dynamic>> record;
+  final CourseCertificate record;
 
   @override
   ConsumerState<_CertificateCard> createState() => _CertificateCardState();
@@ -195,7 +171,7 @@ class _CertificateCardState extends ConsumerState<_CertificateCard> {
       builder: (context) => AlertDialog(
         title: const Text('Enable QR verification?'),
         content: const Text(
-          'Anyone with the certificate link or QR code can see your name, course and completion date, and download this PDF.',
+          'Anyone with the certificate link or QR code can see your name, course and completion date.',
         ),
         actions: [
           TextButton(
@@ -210,29 +186,29 @@ class _CertificateCardState extends ConsumerState<_CertificateCard> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await ref
-        .read(_certificateFunctions)
-        .httpsCallable('issueCertificate')
-        .call({'courseId': widget.record.id, 'shareConsent': true});
+    await _setVerification(true);
   }
 
-  Future<void> _disableVerification() async {
-    await ref
-        .read(_certificateFunctions)
-        .httpsCallable('issueCertificate')
-        .call({'courseId': widget.record.id, 'shareConsent': false});
+  Future<void> _setVerification(bool enabled) async {
+    final client = ref.read(certificateClientProvider);
+    if (client == null) {
+      throw const CertificateRequestException('Sign in again to continue.');
+    }
+    await client.setSharing(widget.record.courseId, enabled);
+    if (mounted) ref.invalidate(certificateHistoryProvider);
   }
 
   Future<void> _pdf({required bool share}) async {
-    final functions = ref.read(_certificateFunctions);
-    final id = widget.record.data()['certificateId'] as String;
-    final result = await functions.httpsCallable('downloadCertificate').call({
-      'courseId': widget.record.id,
-    });
-    final data = result.data as Map;
-    final bytes = base64Decode(data['pdfBase64'] as String);
+    final record = widget.record;
+    final date = MaterialLocalizations.of(context)
+        .formatMediumDate(record.completedAt);
+    final bytes = await renderCertificatePdf(
+      record,
+      record.verificationUri(certificateServer!),
+      date,
+    );
     if (!mounted) return;
-    final filename = 'Yogini-$id.pdf';
+    final filename = 'Yogini-${record.id}.pdf';
     if (share) {
       final renderBox = context.findRenderObject() as RenderBox?;
       final bounds = renderBox == null || !renderBox.hasSize
@@ -252,13 +228,8 @@ class _CertificateCardState extends ConsumerState<_CertificateCard> {
     }
   }
 
-  Future<void> _openVerification(String id) async {
-    final project = ref.read(firebaseAppProvider)!.options.projectId;
-    final uri = Uri.https(
-      'us-central1-$project.cloudfunctions.net',
-      '/verifyCertificate',
-      {'code': id},
-    );
+  Future<void> _openVerification() async {
+    final uri = widget.record.verificationUri(certificateServer!);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw StateError('Could not open verification');
     }
@@ -266,20 +237,20 @@ class _CertificateCardState extends ConsumerState<_CertificateCard> {
 
   @override
   Widget build(BuildContext context) {
-    final certificate = widget.record.data();
-    final id = certificate['certificateId'] as String;
-    final course = certificate['courseTitle'] as String;
-    final date = (certificate['completedAt'] as Timestamp).toDate().toUtc();
-    final sharing = certificate['shareEnabled'] == true;
+    final certificate = widget.record;
+    final sharing = certificate.shareEnabled;
     final formattedDate = MaterialLocalizations.of(context)
-        .formatMediumDate(date);
+        .formatMediumDate(certificate.completedAt);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(course, style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              certificate.courseTitle,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             Text('Completed $formattedDate'),
             Text(sharing ? 'QR verification enabled' : 'Private certificate'),
             const SizedBox(height: 12),
@@ -302,13 +273,13 @@ class _CertificateCardState extends ConsumerState<_CertificateCard> {
                     child: const Text('Share PDF'),
                   ),
                   TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => _run(() => _openVerification(id)),
+                    onPressed: _busy ? null : () => _run(_openVerification),
                     child: const Text('Verify online'),
                   ),
                   TextButton(
-                    onPressed: _busy ? null : () => _run(_disableVerification),
+                    onPressed: _busy
+                        ? null
+                        : () => _run(() => _setVerification(false)),
                     child: const Text('Disable QR verification'),
                   ),
                 ] else
