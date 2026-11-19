@@ -11,6 +11,7 @@ import 'live_catalog.dart';
 import 'live_lessons.dart';
 import 'pages.dart';
 import 'theme.dart';
+import 'yoga_chat.dart';
 
 const _tabs = [
   (path: '/', label: 'Home', icon: Icons.home_outlined),
@@ -54,6 +55,7 @@ final _routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         builder: (_, _) => const AccountPage(register: true),
       ),
+      GoRoute(path: '/chat', builder: (_, _) => const YogaChatPage()),
       GoRoute(path: '/admin', builder: (_, _) => const AdminPage()),
       GoRoute(
         path: '/admin/sign-in',
@@ -138,6 +140,11 @@ class _Shell extends StatelessWidget {
       ),
     ),
     body: SafeArea(top: false, child: child),
+    floatingActionButton: FloatingActionButton(
+      tooltip: 'Open yoga chat',
+      onPressed: () => context.push('/chat'),
+      child: const Icon(Icons.chat_bubble_outline),
+    ),
     bottomNavigationBar: NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: (index) => context.go(_tabs[index].path),

@@ -1,7 +1,7 @@
 name: the_yogini_journey
 description: An offline preview of The Yogini Journey.
 publish_to: none
-version: 0.1.4+5
+version: 0.1.5+6
 environment:
   sdk: ^3.13.0
   flutter: ">=3.50.0"
@@ -21,6 +21,7 @@ dependencies:
   printing: ^5.15.1
   url_launcher: ^6.3.3
   video_player: ^2.14.1
+  shared_preferences: ^2.5.6
 dev_dependencies:
   flutter_test:
     sdk: flutter

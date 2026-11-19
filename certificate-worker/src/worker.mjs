@@ -1,3 +1,4 @@
+import { chatReply, parseChat } from './chat.mjs';
 import { authenticate, courseIdPattern, eligibleCourse, RequestError } from './firebase.mjs';
 
 const certificateIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -12,7 +13,7 @@ function json(data, status = 200) {
   return Response.json(data, { status, headers });
 }
 
-async function requestData(request) {
+async function requestData(request, maxBytes = 4096) {
   const reader = request.body?.getReader();
   if (!reader) throw new RequestError(400, 'Enter a course.');
   const decoder = new TextDecoder();
@@ -23,7 +24,7 @@ async function requestData(request) {
       const { value, done } = await reader.read();
       if (done) break;
       bytes += value.byteLength;
-      if (bytes > 4096) throw new RequestError(413, 'The request is too large.');
+      if (bytes > maxBytes) throw new RequestError(413, 'The request is too large.');
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
@@ -98,6 +99,11 @@ export default {
         }
         await env.DB.prepare('SELECT id FROM certificates LIMIT 0').all();
         return json({ service: 'yogini-certificates', ready: true });
+      }
+      if (url.pathname === '/api/chat' && request.method === 'POST') {
+        const account = await authenticate(request, env);
+        const data = parseChat(await requestData(request, 16000));
+        return json(await chatReply(env, account.uid, data));
       }
       const list = url.pathname === '/api/certificates' && request.method === 'GET';
       const issue = url.pathname === '/api/certificates/issue' && request.method === 'POST';

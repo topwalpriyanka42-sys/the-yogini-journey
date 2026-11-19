@@ -156,3 +156,27 @@ flutter analyze
 flutter test
 node --test certificate-worker/test/worker.test.mjs
 ```
+
+## Phase 6 yoga chat
+
+Tap the chat bubble in the app and choose **English** or **हिंदी**. The app keeps the most recent 30 messages on this device, separately per Firebase user or guest. The trash icon clears local history. Guests and users with an unverified email can use the labelled, offline demo.
+
+For live chat, the verified user sends up to seven recent messages to the app's Cloudflare Worker. The Worker checks Firebase sign-in, limits live AI requests to ten per user per UTC day, and calls Cloudflare Workers AI through the `AI` binding. It stores quota counts in D1 and does not store chat content there. If AI is unavailable, the app replies with a labelled demo response. The assistant is for general yoga education. It redirects medical requests and does not verify individual health facts.
+
+### Update the existing Worker
+
+Keep the current D1 database ID, Firebase secret, and Worker name. In the checkout used for Cloudflare deployment, update the Worker source and migrations from GitHub. If you customized `wrangler.toml` with your D1 ID, preserve that value and add only this AI binding:
+
+```toml
+[ai]
+binding = "AI"
+```
+
+From the `certificate-worker` folder, with an authorized Cloudflare account:
+
+```sh
+npx --yes wrangler d1 migrations apply yogini-certificates --remote
+npx --yes wrangler deploy --keep-vars
+```
+
+Workers AI has a free usage allowance. Usage and model availability depend on the Cloudflare account. The demo requires no AI account or key. Enable the account's Workers AI access if required by the dashboard. Use the same HTTPS Worker URL already configured in the Android build. This change requires no new Firebase rules or Storage.
