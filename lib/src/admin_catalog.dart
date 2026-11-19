@@ -245,44 +245,65 @@ class _EditorState extends State<_Editor> {
   }
 
   Future<void> _upload() async {
-    final result = await FilePicker.pickFiles(
+    final source = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['mp4'],
-      withData: false,
     );
-    if (result == null || !mounted) return;
-    final file = result.files.single;
-    final path = file.path;
-    if (path == null ||
-        !file.name.toLowerCase().endsWith('.mp4') ||
-        file.size < 1 ||
-        file.size > _maxVideoBytes) {
-      setState(() => _status = 'Choose a local MP4 file up to 100 MB.');
+    if (source == null || !mounted) return;
+    final size = source.lengthSync();
+    if (source.extension?.toLowerCase() != 'mp4' ||
+        (size != null && (size < 1 || size > _maxVideoBytes))) {
+      setState(() => _status = 'Choose an MP4 file up to 100 MB.');
       return;
     }
-    final upload = _video.putFile(
-      File(path),
-      SettableMetadata(
-        contentType: 'video/mp4',
-        customMetadata: {'published': 'false'},
-      ),
-    );
-    final subscription = upload.snapshotEvents.listen((snapshot) {
-      if (mounted && snapshot.totalBytes > 0) {
-        setState(
-          () => _progress = snapshot.bytesTransferred / snapshot.totalBytes,
-        );
-      }
-    }, onError: (Object _, StackTrace _) {});
+
+    final directory = await Directory.systemTemp.createTemp('yogini-video-');
     try {
-      await upload;
-      if (mounted) {
-        setState(
-          () => _status = 'Video uploaded. You can publish this lesson.',
-        );
+      final file = File('${directory.path}/video.mp4');
+      final output = file.openWrite();
+      var transferred = 0;
+      try {
+        await for (final bytes in source.readAsByteStream()) {
+          transferred += bytes.length;
+          if (!mounted || transferred > _maxVideoBytes) break;
+          output.add(bytes);
+          await output.flush();
+        }
+      } finally {
+        await output.close();
+      }
+      if (!mounted) return;
+      if (transferred < 1 || transferred > _maxVideoBytes) {
+        setState(() => _status = 'Choose an MP4 file up to 100 MB.');
+        return;
+      }
+
+      final upload = _video.putFile(
+        file,
+        SettableMetadata(
+          contentType: 'video/mp4',
+          customMetadata: {'published': 'false'},
+        ),
+      );
+      final subscription = upload.snapshotEvents.listen((snapshot) {
+        if (mounted && snapshot.totalBytes > 0) {
+          setState(
+            () => _progress = snapshot.bytesTransferred / snapshot.totalBytes,
+          );
+        }
+      }, onError: (Object _, StackTrace _) {});
+      try {
+        await upload;
+        if (mounted) {
+          setState(
+            () => _status = 'Video uploaded. You can publish this lesson.',
+          );
+        }
+      } finally {
+        await subscription.cancel();
       }
     } finally {
-      await subscription.cancel();
+      await directory.delete(recursive: true);
     }
   }
 
