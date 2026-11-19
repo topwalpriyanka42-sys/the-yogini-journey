@@ -15,9 +15,10 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where,
 } from 'firebase/firestore';
-import { getMetadata, ref, uploadBytes } from 'firebase/storage';
+import { getMetadata, ref, updateMetadata, uploadBytes } from 'firebase/storage';
 
 let environment;
 const projectId = 'demo-yogini';
@@ -102,13 +103,68 @@ test('audit logs require a verified admin claim and remain read-only', async () 
   await assertFails(setDoc(doc(admin, 'courses/new'), { published: true }));
 });
 
-test('Storage serves published lesson media and rejects drafts and client uploads', async () => {
+test('Storage serves published media and permits only authorized draft uploads', async () => {
   const guest = environment.unauthenticatedContext().storage();
   const learner = environment.authenticatedContext('learner', verified).storage();
   const admin = environment.authenticatedContext('operator', { ...verified, admin: true }).storage();
   await assertSucceeds(getMetadata(ref(guest, publishedVideo)));
+  await assertSucceeds(getMetadata(ref(learner, publishedVideo)));
   await assertFails(getMetadata(ref(guest, draftVideo)));
   await assertFails(getMetadata(ref(guest, 'courses/private/intro/video.mp4')));
   await assertFails(uploadBytes(ref(learner, publishedVideo), new Uint8Array([2])));
   await assertFails(uploadBytes(ref(admin, publishedVideo), new Uint8Array([2])));
+  const draft = ref(admin, 'courses/morning/new/video.mp4');
+  const videoMetadata = { contentType: 'video/mp4', customMetadata: { published: 'false' } };
+  await assertFails(uploadBytes(ref(learner, draft.fullPath), new Uint8Array([2]), videoMetadata));
+  await assertFails(uploadBytes(draft, new Uint8Array([2]), { ...videoMetadata, contentType: 'text/plain' }));
+  await assertFails(uploadBytes(draft, new Uint8Array([2]), { ...videoMetadata, customMetadata: { published: 'true' } }));
+  await assertSucceeds(uploadBytes(draft, new Uint8Array([2]), videoMetadata));
+  await assertSucceeds(getMetadata(draft));
+  await assertFails(getMetadata(ref(guest, draft.fullPath)));
+  await assertSucceeds(updateMetadata(draft, { customMetadata: { published: 'true' } }));
+  await assertSucceeds(getMetadata(ref(guest, draft.fullPath)));
+  await assertFails(uploadBytes(ref(learner, draft.fullPath), new Uint8Array([3]), videoMetadata));
+  await assertSucceeds(updateMetadata(draft, { customMetadata: { published: 'false' } }));
+  await assertFails(getMetadata(ref(guest, draft.fullPath)));
+  await assertSucceeds(uploadBytes(draft, new Uint8Array([3]), videoMetadata));
+});
+
+test('only verified administrators can edit and explicitly publish valid courses and lessons', async () => {
+  const admin = environment.authenticatedContext('operator', { ...verified, admin: true }).firestore();
+  const learner = environment.authenticatedContext('learner', verified).firestore();
+  const guest = environment.unauthenticatedContext().firestore();
+  const coursePath = 'courses/admin-test';
+  const lessonPath = `${coursePath}/lessons/intro`;
+  const draft = {
+    title: 'Yoga', description: 'Introduction', level: 'beginner',
+    minutes: 15, thumbnail: 'morning', published: false,
+  };
+  const lesson = { title: 'Start here', order: 1, published: false };
+  await assertFails(setDoc(doc(learner, coursePath), draft));
+  await assertFails(setDoc(doc(admin, coursePath), { ...draft, published: true }));
+  await assertFails(setDoc(doc(admin, lessonPath), lesson));
+  await assertSucceeds(setDoc(doc(admin, coursePath), draft));
+  await assertFails(updateDoc(doc(admin, coursePath), { level: 'unknown' }));
+  await assertFails(updateDoc(doc(admin, coursePath), { role: 'admin' }));
+  await assertFails(getDoc(doc(guest, coursePath)));
+  await assertSucceeds(setDoc(doc(admin, lessonPath), lesson));
+  await assertFails(updateDoc(doc(learner, lessonPath), { published: true }));
+  await assertSucceeds(updateDoc(doc(admin, coursePath), { published: true }));
+  await assertSucceeds(getDoc(doc(guest, coursePath)));
+  await assertFails(getDoc(doc(guest, lessonPath)));
+  await assertSucceeds(updateDoc(doc(admin, lessonPath), { published: true }));
+  await assertSucceeds(getDoc(doc(guest, lessonPath)));
+  await assertSucceeds(updateDoc(doc(admin, coursePath), { published: false }));
+  await assertFails(getDoc(doc(guest, lessonPath)));
+});
+
+test('only the verified learner can enroll in a published course', async () => {
+  const learner = environment.authenticatedContext('learner', verified).firestore();
+  const stranger = environment.authenticatedContext('stranger', verified).firestore();
+  const path = 'users/learner/enrollments/morning';
+  await assertFails(setDoc(doc(stranger, path), { enrolledAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(learner, path.replace('morning', 'private')), { enrolledAt: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(learner, path), { enrolledAt: serverTimestamp() }));
+  await assertSucceeds(getDoc(doc(learner, path)));
+  await assertFails(getDoc(doc(stranger, path)));
 });

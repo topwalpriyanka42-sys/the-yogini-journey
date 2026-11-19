@@ -1,10 +1,24 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function admin() {
+      return request.auth != null
+        && 'email_verified' in request.auth.token && request.auth.token.email_verified == true
+        && 'admin' in request.auth.token && request.auth.token.admin == true;
+    }
+
+    function validVideo(file) {
+      return file.contentType == 'video/mp4'
+        && file.size > 0 && file.size <= 100 * 1024 * 1024
+        && file.metadata.published in ['true', 'false'];
+    }
+
     match /courses/{courseId}/{lessonId}/video.mp4 {
-      // Only a trusted publishing process can write this metadata.
-      allow get: if resource.contentType == 'video/mp4'
-        && resource.metadata.published == 'true';
+      allow get: if admin();
+      allow get: if resource.contentType == 'video/mp4' && resource.metadata.published == 'true';
+      allow create: if admin() && validVideo(request.resource)
+        && request.resource.metadata.published == 'false';
+      allow update: if admin() && validVideo(request.resource);
     }
   }
 }

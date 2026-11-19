@@ -22,12 +22,51 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/courses/$(courseId)/lessons/$(lessonId)).data.published == true;
     }
 
+    function validText(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function validCourse(data) {
+      return validText(data.title, 120)
+        && validText(data.description, 2000)
+        && data.level in ['beginner', 'intermediate', 'advanced']
+        && data.minutes is int && data.minutes >= 1 && data.minutes <= 1440
+        && data.thumbnail in ['morning', 'balance', 'studio']
+        && data.published is bool;
+    }
+
+    function validLesson(data) {
+      return validText(data.title, 120) && data.order is int
+        && data.order >= 1 && data.order <= 10000 && data.published is bool;
+    }
+
     match /courses/{courseId} {
       allow get, list: if admin() || resource.data.published == true;
+      allow create: if admin()
+        && request.resource.data.keys().hasOnly(['title', 'description', 'level', 'minutes', 'thumbnail', 'published'])
+        && validCourse(request.resource.data) && !request.resource.data.published;
+      allow update: if admin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'level', 'minutes', 'thumbnail', 'published'])
+        && validCourse(request.resource.data);
 
       match /lessons/{lessonId} {
         allow get, list: if admin() || (publishedCourse(courseId) && resource.data.published == true);
+        allow create: if admin()
+          && exists(/databases/$(database)/documents/courses/$(courseId))
+          && request.resource.data.keys().hasOnly(['title', 'order', 'published'])
+          && validLesson(request.resource.data) && !request.resource.data.published;
+        allow update: if admin()
+          && exists(/databases/$(database)/documents/courses/$(courseId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'order', 'published'])
+          && validLesson(request.resource.data);
       }
+    }
+
+    match /users/{uid}/enrollments/{courseId} {
+      allow get, list, delete: if owner(uid);
+      allow create: if owner(uid) && publishedCourse(courseId)
+        && request.resource.data.keys().hasOnly(['enrolledAt'])
+        && request.resource.data.enrolledAt == request.time;
     }
 
     match /users/{uid}/courses/{courseId}/lesson_progress/{lessonId} {

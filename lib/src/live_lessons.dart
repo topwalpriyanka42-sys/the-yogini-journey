@@ -20,6 +20,34 @@ class LiveCourseLessons extends ConsumerStatefulWidget {
 
 class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
   final _saving = <String>{};
+  bool _savingEnrollment = false;
+
+  Future<void> _enroll(String uid) async {
+    setState(() => _savingEnrollment = true);
+    try {
+      final database = ref.read(firestoreProvider)!;
+      final document = _enrollment(database, uid, widget.course.id);
+      await database.runTransaction((transaction) async {
+        if (!(await transaction.get(document)).exists) {
+          transaction.set(document, {
+            'enrolledAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not enroll. Check your connection and Firebase rules.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingEnrollment = false);
+    }
+  }
 
   Future<void> _save(String uid, String lessonId, bool completed) async {
     if (!_saving.add(lessonId)) return;
@@ -71,19 +99,44 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
             ],
           ),
           data: (lessons) {
-            if (lessons.isEmpty) {
-              return const Text(
-                'Lessons will appear here when they are published.',
-              );
-            }
             final count = lessons
                 .where((lesson) => completed?.contains(lesson.id) ?? false)
                 .length;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (user?.emailVerified == true)
+                  ref
+                      .watch(
+                        _enrollmentProvider((uid: user!.uid, courseId: id)),
+                      )
+                      .when(
+                        loading: () => const Text('Checking enrollment…'),
+                        error: (_, _) => TextButton(
+                          onPressed: () => ref.invalidate(
+                            _enrollmentProvider((uid: user.uid, courseId: id)),
+                          ),
+                          child: const Text('Retry enrollment status'),
+                        ),
+                        data: (enrolled) => enrolled
+                            ? const Text('Enrolled')
+                            : FilledButton(
+                                onPressed: _savingEnrollment
+                                    ? null
+                                    : () => _enroll(user.uid),
+                                child: Text(
+                                  _savingEnrollment
+                                      ? 'Enrolling…'
+                                      : 'Enroll for free',
+                                ),
+                              ),
+                      ),
                 Text('Lessons', style: Theme.of(context).textTheme.titleLarge),
-                if (user == null)
+                if (lessons.isEmpty)
+                  const Text(
+                    'Lessons will appear here when they are published.',
+                  )
+                else if (user == null)
                   const Text('Sign in to save your progress.')
                 else if (!user.emailVerified)
                   const Text('Verify your email in Profile to save progress.')
@@ -127,6 +180,21 @@ class _LiveCourseLessonsState extends ConsumerState<LiveCourseLessons> {
         );
   }
 }
+
+DocumentReference<Map<String, dynamic>> _enrollment(
+  FirebaseFirestore db,
+  String uid,
+  String courseId,
+) => db.collection('users').doc(uid).collection('enrollments').doc(courseId);
+
+final _enrollmentProvider = StreamProvider.autoDispose
+    .family<bool, ({String uid, String courseId})>(
+      (ref, key) => _enrollment(
+        ref.watch(firestoreProvider)!,
+        key.uid,
+        key.courseId,
+      ).snapshots().map((snapshot) => snapshot.exists),
+    );
 
 final _mediaUrlProvider = FutureProvider.autoDispose
     .family<Uri, ({String courseId, String lessonId})>((ref, key) async {

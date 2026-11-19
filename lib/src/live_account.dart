@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'admin_catalog.dart';
 import 'firebase_backend.dart';
 import 'pages.dart';
 
@@ -80,11 +81,11 @@ class AdminPage extends ConsumerWidget {
                         ),
                       ],
                     ),
-                    data: (allowed) => Text(
-                      allowed
-                          ? 'Administrator access verified. Course publishing tools arrive in Phase 4.'
-                          : 'This account needs a verified email and an administrator role.',
-                    ),
+                    data: (allowed) => allowed
+                        ? const AdminCatalog()
+                        : const Text(
+                            'This account needs a verified email and an administrator role.',
+                          ),
                   ),
             if (auth != null && user.asData?.value != null)
               TextButton(

@@ -59,20 +59,21 @@ gcloud auth application-default login
 npm --prefix backend run grant-admin -- <project-id> <verified-user-uid>
 ```
 
-Open **Profile → Administrator access** and sign in again to pick up the new claim. The app checks the verified email and custom claim, then confirms access with a server-only Firestore read. The Firestore rules enforce the same requirements. Only the trusted Admin SDK can assign claims. Course editing, media upload from the app, and publishing controls are Phase 4 work.
+Open **Profile → Administrator access** and sign in again to pick up the new claim. The app checks the verified email and custom claim, then confirms access with a server-only Firestore read. The Firestore rules enforce the same requirements. Only the trusted Admin SDK can assign claims. A verified administrator can then open the course editor in the same screen.
 
 ### Firestore and Storage schema
 
-In Phase 3, a trusted project operator can seed a course and lesson in the Firebase console. Use URL-safe document IDs made from letters, digits and hyphens.
+A trusted project operator can also seed a course and lesson in the Firebase console. Use URL-safe document IDs made from letters, digits and hyphens.
 
 | Path | Fields and access |
 | --- | --- |
 | `courses/{courseId}` | `title`, `description`, `level` (`beginner`, `intermediate` or `advanced`), `minutes` (integer), optional `thumbnail` (`morning`, `balance` or `studio`), `published` (boolean). Guests query published courses. |
 | `courses/{courseId}/lessons/{lessonId}` | `title`, `order` (integer), `published` (boolean). Guests can list published lessons when the parent course is published. |
 | `users/{uid}/courses/{courseId}/lesson_progress/{lessonId}` | `completedAt` (server timestamp). Only the verified owner can read it or mark an existing published lesson complete. This is self-reported learning progress. Certificate eligibility will require separate server validation. |
+| `users/{uid}/enrollments/{courseId}` | `enrolledAt` (server timestamp). A verified learner can enroll in a published course and read their own enrollment. |
 | `admin_audit_logs/{entryId}` | Read access requires a verified administrator token. Only trusted server processes can write. |
 
-Upload the matching public MP4 with content type `video/mp4` to `courses/{courseId}/{lessonId}/video.mp4` using a trusted operator account. Create the object through Firebase Storage so the SDK can obtain its download URL. Set the object’s custom metadata key `published` to the string `true` only when the media is ready for public viewing. The Storage rule checks this trusted metadata independently of the Firestore catalog. To withdraw a video, unpublish the Firestore lesson, remove the Storage publication metadata, and delete the object or revoke its download token to invalidate previously shared URLs. Client uploads and client writes to the catalog are denied in Phase 3. Published-content filters use the default single-field indexes.
+Upload the matching public MP4 with content type `video/mp4` to `courses/{courseId}/{lessonId}/video.mp4` using a trusted operator account. Create the object through Firebase Storage so the SDK can obtain its download URL. Set the object’s custom metadata key `published` to the string `true` only when the media is ready for public viewing. The Storage rule checks this trusted metadata independently of the Firestore catalog. To withdraw a video, unpublish the Firestore lesson, remove the Storage publication metadata, and delete the object or revoke its download token to invalidate previously shared URLs. Only a verified administrator can write catalog entries or upload a draft MP4 from the app. Published-content filters use the default single-field indexes.
 
 ### Test
 
@@ -85,6 +86,22 @@ firebase emulators:exec --project demo-yogini --only firestore,storage 'npm --pr
 
 The emulator tests use a disposable demo project ID and cover published content, private progress, administrator claims and Storage permissions.
 
-## Next phase
+## Phase 4 administrator panel
 
-Phase 4 adds administrator course and media management, app uploads, and course enrollment. The default offline build continues to include 16 course previews and six pranayama previews.
+Deploy the updated rules to the Firebase project before testing on a phone. Use the project operator's authorized Google Cloud credentials.
+
+```sh
+firebase deploy --only firestore:rules,storage --project <project-id>
+```
+
+From the Firebase build, open **Profile → Administrator access**.
+
+1. Tap **Add course**, fill in the title, description, level, duration and a bundled thumbnail, then tap **Save**.
+2. Tap **Add lesson**, fill in the title and order, then tap **Save**.
+3. Tap **Choose and upload MP4**, select a file up to 100 MiB, and wait for the upload confirmation.
+4. Tap **Publish lesson**, return to the course and tap **Publish course**. Learners can now see the lesson and video. Signed-in learners with verified emails can enroll for free.
+5. **Move to draft** removes the course or lesson from the public catalog while preserving its content and learner progress. Move a lesson to draft before replacing its MP4. When withdrawing a video, revoke its old download token in Storage if previously shared links must stop working.
+
+The panel uses bundled thumbnails and preserves drafts. Custom thumbnail uploads and permanent deletion are outside this version.
+
+The default offline build continues to include 16 course previews and six pranayama previews.
