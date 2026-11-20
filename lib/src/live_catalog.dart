@@ -35,9 +35,7 @@ Course _courseFromDocument(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     data['title'] as String,
     Level.values.byName(data['level'] as String),
     data['minutes'] as int,
-    image is String && const {'morning', 'balance', 'studio'}.contains(image)
-        ? image
-        : 'studio',
+    image is String && courseThumbnails.containsKey(image) ? image : 'studio',
     data['description'] as String,
   );
 }

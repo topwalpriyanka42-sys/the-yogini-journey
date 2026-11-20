@@ -31,7 +31,7 @@ service cloud.firestore {
         && validText(data.description, 2000)
         && data.level in ['beginner', 'intermediate', 'advanced']
         && data.minutes is int && data.minutes >= 1 && data.minutes <= 1440
-        && data.thumbnail in ['morning', 'balance', 'studio']
+        && data.thumbnail in ['morning', 'balance', 'studio', 'intermediate', 'advanced']
         && data.published is bool;
     }
 

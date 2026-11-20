@@ -9,6 +9,14 @@ enum Level {
   final String label;
 }
 
+const courseThumbnails = {
+  'morning': 'Morning Yoga',
+  'balance': 'Balance',
+  'studio': 'Studio',
+  'intermediate': 'Intermediate Yoga',
+  'advanced': 'Advanced Yoga',
+};
+
 class Course {
   const Course(
     this.id,

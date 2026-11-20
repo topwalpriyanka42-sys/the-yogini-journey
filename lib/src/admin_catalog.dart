@@ -14,11 +14,6 @@ import 'youtube_video.dart';
 typedef _Document = DocumentSnapshot<Map<String, dynamic>>;
 typedef _Collection = CollectionReference<Map<String, dynamic>>;
 
-const _thumbnails = {
-  'morning': 'Morning Yoga',
-  'balance': 'Balance',
-  'studio': 'Studio',
-};
 const _maxVideoBytes = 100 * 1024 * 1024;
 
 class AdminCatalog extends ConsumerWidget {
@@ -214,7 +209,8 @@ class _EditorState extends State<_Editor> {
           .where((level) => level.name == widget.data?['level'])
           .firstOrNull ??
       Level.beginner;
-  late String _thumbnail = _thumbnails.containsKey(widget.data?['thumbnail'])
+  late String _thumbnail =
+      courseThumbnails.containsKey(widget.data?['thumbnail'])
       ? widget.data!['thumbnail'] as String
       : 'studio';
   late String? _savedYoutubeId = widget.data?['youtubeVideoId'] as String?;
@@ -536,10 +532,10 @@ class _EditorState extends State<_Editor> {
                       DropdownButtonFormField<String>(
                         initialValue: _thumbnail,
                         decoration: const InputDecoration(
-                          labelText: 'Thumbnail',
+                          labelText: 'Course poster',
                         ),
                         items: [
-                          for (final item in _thumbnails.entries)
+                          for (final item in courseThumbnails.entries)
                             DropdownMenuItem(
                               value: item.key,
                               child: Text(item.value),
@@ -548,6 +544,18 @@ class _EditorState extends State<_Editor> {
                         onChanged: _busy
                             ? null
                             : (value) => setState(() => _thumbnail = value!),
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: AspectRatio(
+                          aspectRatio: 3 / 2,
+                          child: Image.asset(
+                            'assets/$_thumbnail.jpg',
+                            fit: BoxFit.cover,
+                            semanticLabel: courseThumbnails[_thumbnail],
+                          ),
+                        ),
                       ),
                     ],
                     TextFormField(
