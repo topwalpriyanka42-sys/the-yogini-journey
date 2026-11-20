@@ -20,7 +20,23 @@ void main() {
 
     await tester.tap(find.widgetWithText(NavigationDestination, 'Pranayama'));
     await tester.pumpAndSettle();
-    expect(find.text('Bhramari'), findsOneWidget);
+    for (final practice in [
+      'Deep Breathing',
+      'Bhramari',
+      'Anulom Vilom',
+      'Nadi Shodhana',
+      'Ujjayi',
+      'Kapalbhati',
+    ]) {
+      final card = find.text(practice);
+      await tester.ensureVisible(card);
+      await tester.tap(card);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, practice), findsOneWidget);
+      expect(find.text('अभ्यास के निर्देश'), findsOneWidget);
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+    }
 
     await tester.tap(
       find.widgetWithText(NavigationDestination, 'Certificates'),

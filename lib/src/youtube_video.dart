@@ -1,3 +1,6 @@
+import 'package:material_ui/material_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 final _videoIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
 
 bool isYoutubeVideoId(String? value) =>
@@ -27,4 +30,22 @@ String? youtubeIdFromLink(String value) {
     _ => null,
   };
   return isYoutubeVideoId(id) ? id : null;
+}
+
+Future<void> openYoutubeVideo(BuildContext context, String videoId) async {
+  try {
+    if (await launchUrl(
+      youtubeWatchUri(videoId),
+      mode: LaunchMode.externalApplication,
+    )) {
+      return;
+    }
+  } catch (_) {
+    // The launcher can throw if the device has no compatible activity.
+  }
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not open YouTube on this device.')),
+    );
+  }
 }

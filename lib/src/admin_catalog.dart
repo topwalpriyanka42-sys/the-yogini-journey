@@ -28,12 +28,55 @@ class AdminCatalog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final courses = ref.watch(firestoreProvider)!.collection('courses');
     final storage = ref.watch(storageProvider);
-    return _AdminList(
-      collection: courses,
-      newLabel: 'Add course',
-      onAdd: () => _openEditor(context, courses.doc(), null, storage, false),
-      onOpen: (doc) =>
-          _openEditor(context, doc.reference, doc.data(), storage, false),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExpansionTile(
+          title: const Text('Manage pranayama videos'),
+          children: [
+            for (final practice in breathPractices)
+              ListTile(
+                title: Text(practice.name),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final document = courses.doc(practice.courseId);
+                  try {
+                    final snapshot = await document.get(
+                      const GetOptions(source: Source.server),
+                    );
+                    if (!context.mounted) return;
+                    await _openEditor(
+                      context,
+                      document,
+                      snapshot.data(),
+                      storage,
+                      false,
+                      practice: practice,
+                    );
+                  } on FirebaseException {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not open this practice. Try again.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _AdminList(
+          collection: courses,
+          newLabel: 'Add course',
+          onAdd: () =>
+              _openEditor(context, courses.doc(), null, storage, false),
+          onOpen: (doc) =>
+              _openEditor(context, doc.reference, doc.data(), storage, false),
+        ),
+      ],
     );
   }
 }
@@ -43,14 +86,16 @@ Future<void> _openEditor(
   DocumentReference<Map<String, dynamic>> document,
   Map<String, dynamic>? data,
   FirebaseStorage? storage,
-  bool lesson,
-) => Navigator.of(context).push<void>(
+  bool lesson, {
+  BreathPractice? practice,
+}) => Navigator.of(context).push<void>(
   MaterialPageRoute(
     builder: (_) => _Editor(
       document: document,
       data: data,
       storage: storage,
       lesson: lesson,
+      practice: practice,
     ),
   ),
 );
@@ -132,12 +177,14 @@ class _Editor extends StatefulWidget {
     required this.data,
     required this.storage,
     required this.lesson,
+    this.practice,
   });
 
   final DocumentReference<Map<String, dynamic>> document;
   final Map<String, dynamic>? data;
   final FirebaseStorage? storage;
   final bool lesson;
+  final BreathPractice? practice;
 
   @override
   State<_Editor> createState() => _EditorState();
@@ -146,13 +193,14 @@ class _Editor extends StatefulWidget {
 class _EditorState extends State<_Editor> {
   final _form = GlobalKey<FormState>();
   late final _title = TextEditingController(
-    text: widget.data?['title']?.toString(),
+    text: widget.data?['title']?.toString() ?? widget.practice?.name,
   );
   late final _description = TextEditingController(
     text:
         (widget.data?['description'] ??
                 widget.data?['dascription'] ??
-                widget.data?['descripition'])
+                widget.data?['descripition'] ??
+                widget.practice?.description)
             ?.toString(),
   );
   late final _number = TextEditingController(
@@ -249,7 +297,25 @@ class _EditorState extends State<_Editor> {
           'youtubeVideoId': FieldValue.delete(),
       if (!_saved) 'published': false,
     };
-    await widget.document.set(data, SetOptions(merge: true));
+    if (widget.practice != null && !_saved) {
+      final created = await widget.document.firestore.runTransaction((
+        tx,
+      ) async {
+        if ((await tx.get(widget.document)).exists) return false;
+        tx.set(widget.document, data);
+        return true;
+      });
+      if (!created) {
+        if (mounted) {
+          setState(
+            () => _status = 'This practice already exists. Reopen it to edit.',
+          );
+        }
+        return;
+      }
+    } else {
+      await widget.document.set(data, SetOptions(merge: true));
+    }
     if (mounted) {
       setState(() {
         _saved = true;

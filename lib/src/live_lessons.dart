@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog.dart';
 import 'certificate_client.dart';
@@ -282,7 +281,7 @@ class LiveLessonPage extends ConsumerWidget {
                   FilledButton.icon(
                     icon: const Icon(Icons.play_arrow),
                     label: const Text('Watch on YouTube'),
-                    onPressed: () => _openYoutube(context, youtubeId!),
+                    onPressed: () => openYoutubeVideo(context, youtubeId!),
                   ),
                 ],
               ),
@@ -312,22 +311,4 @@ class LiveLessonPage extends ConsumerWidget {
               );
         },
       );
-}
-
-Future<void> _openYoutube(BuildContext context, String videoId) async {
-  try {
-    if (await launchUrl(
-      youtubeWatchUri(videoId),
-      mode: LaunchMode.externalApplication,
-    )) {
-      return;
-    }
-  } catch (_) {
-    // The launcher can throw if the device has no compatible activity.
-  }
-  if (context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Could not open YouTube on this device.')),
-    );
-  }
 }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'catalog.dart';
 import 'firebase_backend.dart';
 import 'live_catalog.dart';
+import 'youtube_video.dart';
 
 class PageContent extends StatelessWidget {
   const PageContent({super.key, required this.children, this.maxWidth = 1050});
@@ -59,7 +60,7 @@ class HomePage extends ConsumerWidget {
         onPressed: () => context.go('/pranayama'),
       ),
       const SizedBox(height: 10),
-      for (final practice in ref.watch(breathPracticesProvider).take(2))
+      for (final practice in breathPractices.take(2))
         _PracticeTile(practice: practice),
     ],
   );
@@ -311,21 +312,20 @@ class CoursePreviewCard extends StatelessWidget {
   }
 }
 
-class PranayamaPage extends ConsumerWidget {
+class PranayamaPage extends StatelessWidget {
   const PranayamaPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => PageContent(
+  Widget build(BuildContext context) => PageContent(
     children: [
       Text(
         'Breathing practices',
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: 8),
-      const Text('Browse the practice previews.'),
+      const Text('Open a practice for instructions and video lessons.'),
       const SizedBox(height: 16),
-      for (final practice in ref.watch(breathPracticesProvider))
-        _PracticeTile(practice: practice),
+      for (final practice in breathPractices) _PracticeTile(practice: practice),
     ],
   );
 }
@@ -348,8 +348,104 @@ class _PracticeTile extends StatelessWidget {
         leading: const Icon(Icons.air),
         title: Text(practice.name),
         subtitle: Text(practice.description),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => _PracticePage(practice: practice)),
+        ),
       ),
     );
+  }
+}
+
+class _PracticePage extends StatelessWidget {
+  const _PracticePage({required this.practice});
+
+  final BreathPractice practice;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(practice.name)),
+      body: SafeArea(
+        child: PageContent(
+          maxWidth: 640,
+          children: [
+            Text(
+              'अभ्यास के निर्देश',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 16),
+            for (final (index, step) in practice.instructions.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text('${index + 1}. $step'),
+              ),
+            const Text(
+              'साँस पर ज़ोर न डालें। चक्कर आए या असहज लगे तो रुकें और सामान्य साँस लें।',
+            ),
+            const SizedBox(height: 24),
+            _PracticeVideos(courseId: practice.courseId),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PracticeVideos extends ConsumerWidget {
+  const _PracticeVideos({required this.courseId});
+
+  final String courseId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const unavailable = Text('वीडियो लेसन अभी उपलब्ध नहीं है।');
+    const loading = Text('वीडियो लेसन लोड हो रहे हैं…');
+    const error = Text('वीडियो लेसन लोड नहीं हो सके। कनेक्शन जाँचें।');
+
+    if (ref.watch(firestoreProvider) == null) return unavailable;
+    return ref
+        .watch(courseCatalogProvider)
+        .when(
+          loading: () => loading,
+          error: (_, _) => error,
+          data: (courses) {
+            if (!courses.any((course) => course.id == courseId))
+              return unavailable;
+            return ref
+                .watch(lessonsProvider(courseId))
+                .when(
+                  loading: () => loading,
+                  error: (_, _) => error,
+                  data: (lessons) {
+                    final videos = lessons
+                        .where(
+                          (lesson) => isYoutubeVideoId(lesson.youtubeVideoId),
+                        )
+                        .toList();
+                    if (videos.isEmpty) return unavailable;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'YouTube वीडियो लेसन',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        for (final lesson in videos)
+                          OutlinedButton.icon(
+                            onPressed: () => openYoutubeVideo(
+                              context,
+                              lesson.youtubeVideoId!,
+                            ),
+                            icon: const Icon(Icons.play_circle_outline),
+                            label: Text(lesson.title),
+                          ),
+                      ],
+                    );
+                  },
+                );
+          },
+        );
   }
 }
 
